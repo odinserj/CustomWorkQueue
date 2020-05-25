@@ -23,7 +23,7 @@ namespace CustomWorkQueue.Benchmarks
                 _threads[i] = new Thread(RunThread)
                 {
                     IsBackground = true,
-                    Name = $"BackgroundWorker:{i + 1}"
+                    Name = $"CustomWorker:{i + 1}"
                 };
 
                 _threads[i].Start();
@@ -40,7 +40,7 @@ namespace CustomWorkQueue.Benchmarks
 
         public override string ToString()
         {
-            return $"BackgroundT{_threads.Length}";
+            return $"CustomT{_threads.Length}";
         }
 
         public void Dispose()
