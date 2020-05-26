@@ -11,12 +11,9 @@ namespace CustomWorkQueue
 
         public async Task DispatchAsync(Func<TWorkItem, CancellationToken, Task> action, CancellationToken cancellationToken)
         {
-            var locals = new WorkQueueLocals(this);
-            using var semaphore = new SemaphoreSlim(0, 1);
-            var waitNode = new WaitNode(semaphore);
+            using var locals = new WorkQueueLocals(this);
             try
             {
-                RegisterLocalQueue(locals.Queue);
                 LocalQueue.Value = locals;
 
                 var waitAdded = false;
@@ -36,7 +33,7 @@ namespace CustomWorkQueue
 
                     if (!waitAdded)
                     {
-                        AddWaitNode(waitNode, ref spinWait);
+                        AddWaitNode(locals.WaitNode, ref spinWait);
                         waitAdded = true;
                         continue;
                     }
@@ -47,7 +44,7 @@ namespace CustomWorkQueue
                         continue;
                     }
 
-                    await semaphore.WaitAsync(cancellationToken);
+                    await locals.Semaphore.WaitAsync(cancellationToken);
                     spinWait.Reset();
                     waitAdded = false;
                 }
@@ -56,7 +53,6 @@ namespace CustomWorkQueue
             }
             finally
             {
-                UnregisterLocalQueue(locals.Queue);
                 LocalQueue.Value = null;
             }
         }

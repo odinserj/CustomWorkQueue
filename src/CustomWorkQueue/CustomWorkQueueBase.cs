@@ -211,32 +211,38 @@ namespace CustomWorkQueue
             }
         }
 
-        internal void RegisterLocalQueue(WorkStealingQueue<TWorkItem> queue)
-        {
-            WorkStealingQueueList.Add(ref _localQueues, queue);
-        }
-
-        internal void UnregisterLocalQueue(WorkStealingQueue<TWorkItem> queue)
-        {
-            WorkStealingQueueList.Remove(ref _localQueues, queue);
-        }
-
         private int _nextIndex;
 
-        internal sealed class WorkQueueLocals
+        internal sealed class WorkQueueLocals : IDisposable
         {
+            private readonly CustomWorkQueueBase<TWorkItem> _workQueue;
+
             // Should not be readonly
             public FastRandom Random;
             public readonly WorkStealingQueue<TWorkItem> Queue;
             public readonly int PreferredIndex;
             public readonly ConcurrentQueue<TWorkItem> PreferredQueue;
+            public readonly SemaphoreSlim Semaphore;
+            public readonly WaitNode WaitNode;
 
             public WorkQueueLocals(CustomWorkQueueBase<TWorkItem> workQueue)
             {
+                _workQueue = workQueue;
+
                 Random = new FastRandom(Thread.CurrentThread.ManagedThreadId);
                 Queue = new WorkStealingQueue<TWorkItem>();
-                PreferredIndex = (Interlocked.Increment(ref workQueue._nextIndex) - 1) % workQueue._globalQueues.Length;
-                PreferredQueue = workQueue._globalQueues[PreferredIndex];
+                PreferredIndex = (Interlocked.Increment(ref _workQueue._nextIndex) - 1) % _workQueue._globalQueues.Length;
+                PreferredQueue = _workQueue._globalQueues[PreferredIndex];
+                Semaphore = new SemaphoreSlim(0, 1);
+                WaitNode = new WaitNode(Semaphore);
+
+                WorkStealingQueueList.Add(ref _workQueue._localQueues, Queue);
+            }
+
+            public void Dispose()
+            {
+                WorkStealingQueueList.Remove(ref _workQueue._localQueues, Queue);
+                Semaphore.Dispose();
             }
         }
 

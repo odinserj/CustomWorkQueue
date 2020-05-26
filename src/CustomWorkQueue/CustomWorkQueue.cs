@@ -9,12 +9,9 @@ namespace CustomWorkQueue
     {
         public void Dispatch(Action<TWorkItem, CancellationToken> action, CancellationToken cancellationToken)
         {
-            var locals = new WorkQueueLocals(this);
-            using var semaphore = new SemaphoreSlim(0, 1);
-            var waitNode = new WaitNode(semaphore);
+            using var locals = new WorkQueueLocals(this);
             try
             {
-                RegisterLocalQueue(locals.Queue);
                 CustomWorkQueueNonGenericStore.Locals = locals;
 
                 var waitAdded = false;
@@ -34,7 +31,7 @@ namespace CustomWorkQueue
 
                     if (!waitAdded)
                     {
-                        AddWaitNode(waitNode, ref spinWait);
+                        AddWaitNode(locals.WaitNode, ref spinWait);
                         waitAdded = true;
                         continue;
                     }
@@ -45,7 +42,7 @@ namespace CustomWorkQueue
                         continue;
                     }
 
-                    semaphore.Wait(cancellationToken);
+                    locals.Semaphore.Wait(cancellationToken);
                     spinWait.Reset();
                     waitAdded = false;
                 }
@@ -54,7 +51,6 @@ namespace CustomWorkQueue
             }
             finally
             {
-                UnregisterLocalQueue(locals.Queue);
                 CustomWorkQueueNonGenericStore.Locals = null;
             }
         }
