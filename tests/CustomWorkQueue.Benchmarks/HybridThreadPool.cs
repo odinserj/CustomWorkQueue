@@ -33,7 +33,7 @@ namespace CustomWorkQueue.Benchmarks
                     Name = $"HybridWorker:{i + 1}"
                 };
 
-                _threads[i].Start((i / WorkQueueCount) % WorkQueueCount);
+                _threads[i].Start(i % WorkQueueCount);
             }
         }
 
