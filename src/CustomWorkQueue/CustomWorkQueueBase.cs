@@ -57,7 +57,7 @@ namespace CustomWorkQueue
             }
             else
             {
-                _globalQueues[_nextGlobal % _globalQueues.Length].Enqueue(work);
+                _globalQueues[_nextGlobal / 64 % _globalQueues.Length].Enqueue(work);
                 _nextGlobal++;
             }
 
