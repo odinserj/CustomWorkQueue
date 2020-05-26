@@ -26,18 +26,12 @@ namespace CustomWorkQueue
                 return true;
             }
 
-            var c = _queues.Length - 1;
-            var maxIndex = c;
-            var i = _index + 1;
-            while (c > 0)
+            foreach (var queue in _queues)
             {
-                i = i < maxIndex ? i + 1 : 0;
-                if (_queues[i]._queue.TryDequeue(out callback))
+                if (queue != this && queue._queue.TryDequeue(out callback))
                 {
                     return true;
                 }
-
-                c--;
             }
 
             return false;
