@@ -12,7 +12,7 @@ namespace CustomWorkQueue
             using var locals = new WorkQueueLocals(this);
             try
             {
-                CustomWorkQueueNonGenericStore.LocalQueue = locals.Queue;
+                CustomWorkQueueNonGenericStore.Locals = locals;
 
                 var waitAdded = false;
                 var spinWait = new SpinWait();
@@ -51,13 +51,13 @@ namespace CustomWorkQueue
             }
             finally
             {
-                CustomWorkQueueNonGenericStore.LocalQueue = null;
+                CustomWorkQueueNonGenericStore.Locals = null;
             }
         }
 
-        internal override WorkStealingQueue<TWorkItem> GetLocalQueue()
+        internal override WorkQueueLocals GetLocals()
         {
-            return Unsafe.As<WorkStealingQueue<TWorkItem>>(CustomWorkQueueNonGenericStore.LocalQueue);
+            return Unsafe.As<WorkQueueLocals>(CustomWorkQueueNonGenericStore.Locals);
         }
     }
 }

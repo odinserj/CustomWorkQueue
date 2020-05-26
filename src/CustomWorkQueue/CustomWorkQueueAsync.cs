@@ -7,14 +7,14 @@ namespace CustomWorkQueue
     public sealed class CustomWorkQueueAsync<TWorkItem> : CustomWorkQueueBase<TWorkItem>
         where TWorkItem : class
     {
-        private static readonly AsyncLocal<WorkStealingQueue<TWorkItem>> LocalQueue = new AsyncLocal<WorkStealingQueue<TWorkItem>>();
+        private static readonly AsyncLocal<WorkQueueLocals> LocalQueue = new AsyncLocal<WorkQueueLocals>();
 
         public async Task DispatchAsync(Func<TWorkItem, CancellationToken, Task> action, CancellationToken cancellationToken)
         {
             using var locals = new WorkQueueLocals(this);
             try
             {
-                LocalQueue.Value = locals.Queue;
+                LocalQueue.Value = locals;
 
                 var waitAdded = false;
                 var spinWait = new SpinWait();
@@ -57,7 +57,7 @@ namespace CustomWorkQueue
             }
         }
 
-        internal override WorkStealingQueue<TWorkItem> GetLocalQueue()
+        internal override WorkQueueLocals GetLocals()
         {
             return LocalQueue.Value;
         }
