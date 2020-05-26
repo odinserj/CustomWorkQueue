@@ -12,7 +12,7 @@ namespace CustomWorkQueue
         private static readonly WaitNode Tombstone = new WaitNode(null);
 
         private WorkStealingQueue<TWorkItem>[] _localQueues = new WorkStealingQueue<TWorkItem>[0];
-        private readonly ConcurrentQueue<TWorkItem> _queue = new ConcurrentQueue<TWorkItem>();
+        internal readonly ConcurrentQueue<TWorkItem> _queue = new ConcurrentQueue<TWorkItem>();
         private readonly WaitNode _waitHead = new WaitNode(null);
 
         public long PendingWorkItemCount
@@ -83,7 +83,7 @@ namespace CustomWorkQueue
             }
         }
 
-        internal bool TryDequeue(WorkQueueLocals locals, out TWorkItem callback, out bool missedSteal)
+        internal virtual bool TryDequeue(WorkQueueLocals locals, out TWorkItem callback, out bool missedSteal)
         {
             var localQueue = locals.Queue;
             missedSteal = false;
@@ -117,16 +117,16 @@ namespace CustomWorkQueue
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected void SignalOneThread()
+        internal bool SignalOneThread()
         {
-            if (Volatile.Read(ref _waitHead.Next) == null) return;
-            SignalOneThreadSlow();
+            if (Volatile.Read(ref _waitHead.Next) == null) return false;
+            return SignalOneThreadSlow();
         }
 
-        private void SignalOneThreadSlow()
+        private bool SignalOneThreadSlow()
         {
             var node = Interlocked.Exchange(ref _waitHead.Next, null);
-            if (node == null) return;
+            if (node == null) return false;
 
             var tailNode = Interlocked.Exchange(ref node.Next, Tombstone);
             if (tailNode != null)
@@ -143,6 +143,7 @@ namespace CustomWorkQueue
             }
 
             node.Value.Release();
+            return true;
         }
 
         internal void AddWaitNode(WaitNode node, ref SpinWait spinWait)
@@ -158,9 +159,14 @@ namespace CustomWorkQueue
             }
         }
 
+        internal WorkQueueLocals CreateLocals()
+        {
+            return new WorkQueueLocals(this);
+        }
+
         internal sealed class WorkQueueLocals : IDisposable
         {
-            private readonly CustomWorkQueueBase<TWorkItem> _workQueue;
+            public readonly CustomWorkQueueBase<TWorkItem> _workQueue;
 
             // Should not be readonly
             public FastRandom Random;
