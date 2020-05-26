@@ -76,7 +76,7 @@ namespace CustomWorkQueue.Benchmarks
             }
             else
             {
-                var workQueue = _workQueues[_nextQueue % WorkQueueCount];
+                var workQueue = _workQueues[_nextQueue / 32 % WorkQueueCount];
                 _nextQueue = unchecked(_nextQueue + 1);
 
                 workQueue._queue.Enqueue(work);
@@ -157,18 +157,10 @@ namespace CustomWorkQueue.Benchmarks
                 return true;
             }
 
-            var c = _workQueues.Length - 1;
-            var maxIndex = c;
-            var i = index + 1;
-            while (c > 0)
+            var nextQueue = _workQueues[(index + 1) % WorkQueueCount];
+            if (nextQueue != locals._workQueue && nextQueue.TryDequeueGlobalOrSteal(null, ref locals.Random, out callback, ref missedSteal))
             {
-                i = i < maxIndex ? i + 1 : 0;
-                if (_workQueues[i]._queue.TryDequeue(out callback))
-                {
-                    return true;
-                }
-
-                c--;
+                return true;
             }
 
             return false;

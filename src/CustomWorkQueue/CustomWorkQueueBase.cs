@@ -86,33 +86,44 @@ namespace CustomWorkQueue
             }
         }
 
-        internal virtual bool TryDequeue(WorkQueueLocals locals, out TWorkItem callback, out bool missedSteal)
+        internal bool TryDequeue(WorkQueueLocals locals, out TWorkItem callback, out bool missedSteal)
         {
             var localQueue = locals.Queue;
             missedSteal = false;
 
-            if ((callback = localQueue.LocalPop()) == null && // first try the local queue
-                !_queue.TryDequeue(out callback)) // then try the global queue
+            if ((callback = localQueue.LocalPop()) != null) return true; // first try the local queue
+            return TryDequeueGlobalOrSteal(localQueue, ref locals.Random, out callback, ref missedSteal);
+        }
+
+        internal bool TryDequeueGlobalOrSteal(
+            WorkStealingQueue<TWorkItem> localQueue,
+            ref FastRandom random, out TWorkItem callback, ref bool missedSteal)
+        {
+            if (!_queue.TryDequeue(out callback)) // then try the global queue
             {
                 // finally try to steal from another thread's local queue
                 var queues = Volatile.Read(ref _localQueues);
                 int c = queues.Length;
 
-                int maxIndex = c - 1;
-                int i = locals.Random.Next(c);
-                while (c > 0)
+                if (c > 0)
                 {
-                    i = i < maxIndex ? i + 1 : 0;
-                    var otherQueue = queues[i];
-                    if (otherQueue != localQueue && otherQueue.CanSteal)
+                    int maxIndex = c - 1;
+                    int i = random.Next(c);
+                    while (c > 0)
                     {
-                        callback = otherQueue.TrySteal(ref missedSteal);
-                        if (callback != null)
+                        i = i < maxIndex ? i + 1 : 0;
+                        var otherQueue = queues[i];
+                        if (otherQueue != localQueue && otherQueue.CanSteal)
                         {
-                            break;
+                            callback = otherQueue.TrySteal(ref missedSteal);
+                            if (callback != null)
+                            {
+                                break;
+                            }
                         }
+
+                        c--;
                     }
-                    c--;
                 }
             }
 
