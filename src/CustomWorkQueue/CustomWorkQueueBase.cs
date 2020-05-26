@@ -12,14 +12,28 @@ namespace CustomWorkQueue
         private static readonly WaitNode Tombstone = new WaitNode(null);
 
         private WorkStealingQueue<TWorkItem>[] _localQueues = new WorkStealingQueue<TWorkItem>[0];
-        private readonly ConcurrentQueue<TWorkItem> _queue = new ConcurrentQueue<TWorkItem>();
+        private readonly ConcurrentQueue<TWorkItem>[] _globalQueues = new ConcurrentQueue<TWorkItem>[4];
         private readonly WaitNode _waitHead = new WaitNode(null);
+
+        public CustomWorkQueueBase()
+        {
+            for (var i = 0; i < _globalQueues.Length; i++)
+            {
+                _globalQueues[i] = new ConcurrentQueue<TWorkItem>();
+            }
+        }
 
         public long PendingWorkItemCount
         {
             get
             {
-                long count = _queue.Count;
+                long count = 0L;
+
+                foreach (var globalQueue in _globalQueues)
+                {
+                    count += globalQueue.Count;
+                }
+
                 var localQueues = Volatile.Read(ref _localQueues);
 
                 foreach (var localQueue in localQueues)
@@ -31,6 +45,8 @@ namespace CustomWorkQueue
             }
         }
 
+        private int _nextGlobal;
+
         public void UnsafeQueueUserWorkItem(TWorkItem work, bool preferLocal)
         {
             var localQueue = preferLocal ? GetLocalQueue() : null;
@@ -41,7 +57,8 @@ namespace CustomWorkQueue
             }
             else
             {
-                _queue.Enqueue(work);
+                _globalQueues[_nextGlobal % _globalQueues.Length].Enqueue(work);
+                _nextGlobal++;
             }
 
             SignalOneThread();
@@ -57,10 +74,13 @@ namespace CustomWorkQueue
 
         internal IEnumerable<TWorkItem> GetQueuedWorkItems()
         {
-            // Enumerate global queue
-            foreach (var workItem in _queue)
+            // Enumerate global queues
+            foreach (var globalQueue in _globalQueues)
             {
-                yield return workItem;
+                foreach (var workItem in globalQueue)
+                {
+                    yield return workItem;
+                }
             }
 
             var queues = Volatile.Read(ref _localQueues);
@@ -83,37 +103,60 @@ namespace CustomWorkQueue
             }
         }
 
-        internal bool TryDequeue(WorkQueueLocals locals, out TWorkItem callback, out bool missedSteal)
+        internal bool TryDequeue(WorkQueueLocals locals, out TWorkItem callback, out bool missedSteal, bool steal)
         {
             var localQueue = locals.Queue;
             missedSteal = false;
 
-            if ((callback = localQueue.LocalPop()) == null && // first try the local queue
-                !_queue.TryDequeue(out callback)) // then try the global queue
-            {
-                // finally try to steal from another thread's local queue
-                var queues = Volatile.Read(ref _localQueues);
-                int c = queues.Length;
+            if ((callback = localQueue.LocalPop()) != null) return true;
 
-                int maxIndex = c - 1;
-                int i = locals.Random.Next(c);
-                while (c > 0)
+            int c = _globalQueues.Length;
+
+            int maxIndex = c - 1;
+            int i = locals.Random.Next(c);
+            while (c > 0)
+            {
+                i = i < maxIndex ? i + 1 : 0;
+                if (_globalQueues[i].TryDequeue(out callback))
                 {
-                    i = i < maxIndex ? i + 1 : 0;
-                    var otherQueue = queues[i];
-                    if (otherQueue != localQueue && otherQueue.CanSteal)
-                    {
-                        callback = otherQueue.TrySteal(ref missedSteal);
-                        if (callback != null)
-                        {
-                            break;
-                        }
-                    }
-                    c--;
+                    return true;
                 }
+
+                c--;
+            }
+
+            if (steal) // then try the global queue
+            {
+                TrySteal(locals, ref callback, ref missedSteal, localQueue);
             }
 
             return callback != null;
+        }
+
+        private void TrySteal(WorkQueueLocals locals, ref TWorkItem callback, ref bool missedSteal,
+            WorkStealingQueue<TWorkItem> localQueue)
+        {
+            // finally try to steal from another thread's local queue
+            var queues = Volatile.Read(ref _localQueues);
+            int c = queues.Length;
+
+            int maxIndex = c - 1;
+            int i = locals.Random.Next(c);
+            while (c > 0)
+            {
+                i = i < maxIndex ? i + 1 : 0;
+                var otherQueue = queues[i];
+                if (otherQueue != localQueue && otherQueue.CanSteal)
+                {
+                    callback = otherQueue.TrySteal(ref missedSteal);
+                    if (callback != null)
+                    {
+                        break;
+                    }
+                }
+
+                c--;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
