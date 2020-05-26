@@ -123,7 +123,7 @@ namespace CustomWorkQueue
 
             int c = _globalQueues.Length - 1;
 
-            int maxIndex = c - 1;
+            int maxIndex = c;
             int i = locals.PreferredIndex;
             while (c > 0)
             {
