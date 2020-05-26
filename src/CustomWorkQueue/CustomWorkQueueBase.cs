@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace CustomWorkQueue
 {
-    public abstract class CustomWorkQueueBase<TWorkItem>
+    public class CustomWorkQueueBase<TWorkItem>
         where TWorkItem : class
     {
         private static readonly WaitNode Tombstone = new WaitNode(null);
@@ -47,7 +47,10 @@ namespace CustomWorkQueue
             SignalOneThread();
         }
 
-        internal abstract WorkStealingQueue<TWorkItem> GetLocalQueue();
+        internal virtual WorkStealingQueue<TWorkItem> GetLocalQueue()
+        {
+            return null;
+        }
 
         internal bool TryPopCustomWorkItem(TWorkItem workItem)
         {
@@ -117,16 +120,16 @@ namespace CustomWorkQueue
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal bool SignalOneThread()
+        internal void SignalOneThread()
         {
-            if (Volatile.Read(ref _waitHead.Next) == null) return false;
-            return SignalOneThreadSlow();
+            if (Volatile.Read(ref _waitHead.Next) == null) return;
+            SignalOneThreadSlow();
         }
 
-        private bool SignalOneThreadSlow()
+        private void SignalOneThreadSlow()
         {
             var node = Interlocked.Exchange(ref _waitHead.Next, null);
-            if (node == null) return false;
+            if (node == null) return;
 
             var tailNode = Interlocked.Exchange(ref node.Next, Tombstone);
             if (tailNode != null)
@@ -143,7 +146,6 @@ namespace CustomWorkQueue
             }
 
             node.Value.Release();
-            return true;
         }
 
         internal void AddWaitNode(WaitNode node, ref SpinWait spinWait)

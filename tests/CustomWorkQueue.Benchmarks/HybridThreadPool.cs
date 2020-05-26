@@ -11,15 +11,15 @@ namespace CustomWorkQueue.Benchmarks
         };
 
         private const int WorkQueueCount = 4;
-        private readonly HybridWorkQueue<IThreadPoolWorkItem>[] _workQueues;
+        private readonly CustomWorkQueueBase<IThreadPoolWorkItem>[] _workQueues;
         private readonly Thread[] _threads;
 
         public HybridThreadPool(int threadCount)
         {
-            var queues = new HybridWorkQueue<IThreadPoolWorkItem>[WorkQueueCount];
+            var queues = new CustomWorkQueueBase<IThreadPoolWorkItem>[WorkQueueCount];
             for (var i = 0; i < queues.Length; i++)
             {
-                queues[i] = new HybridWorkQueue<IThreadPoolWorkItem>(queues, i);
+                queues[i] = new CustomWorkQueueBase<IThreadPoolWorkItem>();
             }
 
             _workQueues = queues;
@@ -60,35 +60,28 @@ namespace CustomWorkQueue.Benchmarks
         public void UnsafeQueueUserWorkItem(IThreadPoolWorkItem work, bool preferLocal)
         {
             var locals = Locals;
-            CustomWorkQueueBase<IThreadPoolWorkItem> nonSignaled = null;
+
             if (locals != null)
             {
                 if (preferLocal)
                 {
                     locals.Queue.LocalPush(work);
-                    locals._workQueue.SignalOneThread();
-                    return;
+                }
+                else
+                {
+                    locals._workQueue._queue.Enqueue(work);
                 }
 
-                locals._workQueue._queue.Enqueue(work);
-                if (!locals._workQueue.SignalOneThread()) nonSignaled = locals._workQueue;
+                locals._workQueue.SignalOneThread();
             }
             else
             {
-                var workQueue = _workQueues[_nextQueue / 32 % WorkQueueCount];
+                var workQueue = _workQueues[_nextQueue % WorkQueueCount];
                 _nextQueue = unchecked(_nextQueue + 1);
 
                 workQueue._queue.Enqueue(work);
-                if (!workQueue.SignalOneThread()) nonSignaled = workQueue;
+                workQueue.SignalOneThread();
             }
-
-            /*if (nonSignaled != null)
-            {
-                foreach (var workQueue in _workQueues)
-                {
-                    if (workQueue != nonSignaled && workQueue.SignalOneThread()) break;
-                }
-            }*/
         }
 
         public override string ToString()
@@ -119,14 +112,14 @@ namespace CustomWorkQueue.Benchmarks
 
                 while (true)
                 {
-                    if (workQueue.TryDequeue(locals, out var work, out var missedSteal))
+                    if (TryDequeue(index, locals, out var work, out var missedSteal))
                     {
                         if (!waitAdded) workQueue.SignalOneThread();
 
                         do
                         {
                             work.Execute();
-                        } while (workQueue.TryDequeue(locals, out work, out missedSteal));
+                        } while (TryDequeue(index, locals, out work, out missedSteal));
                     }
 
                     if (!waitAdded)
@@ -151,6 +144,34 @@ namespace CustomWorkQueue.Benchmarks
             {
                 Locals = null;
             }
+        }
+
+        internal bool TryDequeue(
+            int index,
+            CustomWorkQueueBase<IThreadPoolWorkItem>.WorkQueueLocals locals,
+            out IThreadPoolWorkItem callback,
+            out bool missedSteal)
+        {
+            if (locals._workQueue.TryDequeue(locals, out callback, out missedSteal))
+            {
+                return true;
+            }
+
+            var c = _workQueues.Length - 1;
+            var maxIndex = c;
+            var i = index + 1;
+            while (c > 0)
+            {
+                i = i < maxIndex ? i + 1 : 0;
+                if (_workQueues[i]._queue.TryDequeue(out callback))
+                {
+                    return true;
+                }
+
+                c--;
+            }
+
+            return false;
         }
     }
 }
