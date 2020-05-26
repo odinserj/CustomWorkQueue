@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Helios.Concurrency;
+using Microsoft.Diagnostics.Runtime;
 
 namespace CustomWorkQueue.Benchmarks
 {
@@ -13,7 +14,6 @@ namespace CustomWorkQueue.Benchmarks
     {
         private readonly IThreadPool<IThreadPoolWorkItem>[] _pools =
         {
-            new HybridThreadPool(Environment.ProcessorCount),
             new CustomThreadPool(Environment.ProcessorCount),
             new DedicatedThreadPool(new DedicatedThreadPoolSettings(Environment.ProcessorCount)),
             new ClrThreadPool()
