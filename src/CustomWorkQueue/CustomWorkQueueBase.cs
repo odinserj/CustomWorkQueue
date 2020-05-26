@@ -59,7 +59,7 @@ namespace CustomWorkQueue
                 }
                 else
                 {
-                    locals.PreferredGlobal.Enqueue(work);
+                    _globalQueues[locals.PreferredIndex].Enqueue(work);
                 }
             }
             else
@@ -120,15 +120,14 @@ namespace CustomWorkQueue
             int c = _globalQueues.Length;
 
             int maxIndex = c - 1;
-            int i = locals.Random.Next(c);
+            int i = locals.PreferredIndex;
             while (c > 0)
             {
-                i = i < maxIndex ? i + 1 : 0;
                 if (_globalQueues[i].TryDequeue(out callback))
                 {
                     return true;
                 }
-
+                i = i < maxIndex ? i + 1 : 0;
                 c--;
             }
 
@@ -215,7 +214,7 @@ namespace CustomWorkQueue
             // Should not be readonly
             public FastRandom Random;
             public readonly WorkStealingQueue<TWorkItem> Queue;
-            public readonly ConcurrentQueue<TWorkItem> PreferredGlobal;
+            public readonly int PreferredIndex;
             public readonly SemaphoreSlim Semaphore;
             public readonly WaitNode WaitNode;
 
@@ -226,7 +225,7 @@ namespace CustomWorkQueue
                 var managedThreadId = Thread.CurrentThread.ManagedThreadId;
                 Random = new FastRandom(managedThreadId);
                 Queue = new WorkStealingQueue<TWorkItem>();
-                PreferredGlobal = _workQueue._globalQueues[managedThreadId % _workQueue._globalQueues.Length];
+                PreferredIndex = managedThreadId % _workQueue._globalQueues.Length;
                 Semaphore = new SemaphoreSlim(0, 1);
                 WaitNode = new WaitNode(Semaphore);
 
