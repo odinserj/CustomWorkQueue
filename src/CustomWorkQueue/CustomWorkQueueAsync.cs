@@ -21,14 +21,14 @@ namespace CustomWorkQueue
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    if (TryDequeue(locals, out var work, out var missedSteal, waitAdded))
+                    if (TryDequeue(locals, out var work, out var missedSteal))
                     {
                         if (!waitAdded) SignalOneThread();
 
                         do
                         {
                             await action(work, cancellationToken);
-                        } while (TryDequeue(locals, out work, out missedSteal, waitAdded));
+                        } while (TryDequeue(locals, out work, out missedSteal));
                     }
 
                     if (!waitAdded)
