@@ -59,7 +59,7 @@ namespace CustomWorkQueue
                 }
                 else
                 {
-                    locals.PreferredQueue.Enqueue(work);
+                    _globalQueues[locals.PreferredIndex].Enqueue(work);
                 }
             }
             else
@@ -115,23 +115,19 @@ namespace CustomWorkQueue
             var localQueue = locals.Queue;
             missedSteal = false;
 
-            if ((callback = localQueue.LocalPop()) != null ||
-                locals.PreferredQueue.TryDequeue(out callback))
-            {
-                return true;
-            }
+            if ((callback = localQueue.LocalPop()) != null) return true;
 
-            int c = _globalQueues.Length - 1;
+            int c = _globalQueues.Length;
 
             int maxIndex = c - 1;
             int i = locals.PreferredIndex;
             while (c > 0)
             {
-                i = i < maxIndex ? i + 1 : 0;
                 if (_globalQueues[i].TryDequeue(out callback))
                 {
                     return true;
                 }
+                i = i < maxIndex ? i + 1 : 0;
                 c--;
             }
 
@@ -211,8 +207,6 @@ namespace CustomWorkQueue
             }
         }
 
-        private int _nextIndex;
-
         internal sealed class WorkQueueLocals : IDisposable
         {
             private readonly CustomWorkQueueBase<TWorkItem> _workQueue;
@@ -221,7 +215,6 @@ namespace CustomWorkQueue
             public FastRandom Random;
             public readonly WorkStealingQueue<TWorkItem> Queue;
             public readonly int PreferredIndex;
-            public readonly ConcurrentQueue<TWorkItem> PreferredQueue;
             public readonly SemaphoreSlim Semaphore;
             public readonly WaitNode WaitNode;
 
@@ -229,10 +222,10 @@ namespace CustomWorkQueue
             {
                 _workQueue = workQueue;
 
-                Random = new FastRandom(Thread.CurrentThread.ManagedThreadId);
+                var managedThreadId = Thread.CurrentThread.ManagedThreadId;
+                Random = new FastRandom(managedThreadId);
                 Queue = new WorkStealingQueue<TWorkItem>();
-                PreferredIndex = (Interlocked.Increment(ref _workQueue._nextIndex) - 1) % _workQueue._globalQueues.Length;
-                PreferredQueue = _workQueue._globalQueues[PreferredIndex];
+                PreferredIndex = managedThreadId % _workQueue._globalQueues.Length;
                 Semaphore = new SemaphoreSlim(0, 1);
                 WaitNode = new WaitNode(Semaphore);
 
