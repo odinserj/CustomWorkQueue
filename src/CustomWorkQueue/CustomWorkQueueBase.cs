@@ -49,18 +49,11 @@ namespace CustomWorkQueue
 
         public void UnsafeQueueUserWorkItem(TWorkItem work, bool preferLocal)
         {
-            var locals = GetLocals();
+            var localQueue = preferLocal ? GetLocalQueue() : null;
 
-            if (locals != null)
+            if (localQueue != null)
             {
-                if (preferLocal)
-                {
-                    locals.Queue.LocalPush(work);
-                }
-                else
-                {
-                    locals.PreferredGlobal.Enqueue(work);
-                }
+                localQueue.LocalPush(work);
             }
             else
             {
@@ -71,12 +64,12 @@ namespace CustomWorkQueue
             SignalOneThread();
         }
 
-        internal abstract WorkQueueLocals GetLocals();
+        internal abstract WorkStealingQueue<TWorkItem> GetLocalQueue();
 
         internal bool TryPopCustomWorkItem(TWorkItem workItem)
         {
-            var localQueue = GetLocals();
-            return localQueue != null && localQueue.Queue.LocalFindAndPop(workItem);
+            var localQueue = GetLocalQueue();
+            return localQueue != null && localQueue.LocalFindAndPop(workItem);
         }
 
         internal IEnumerable<TWorkItem> GetQueuedWorkItems()
@@ -215,7 +208,6 @@ namespace CustomWorkQueue
             // Should not be readonly
             public FastRandom Random;
             public readonly WorkStealingQueue<TWorkItem> Queue;
-            public readonly ConcurrentQueue<TWorkItem> PreferredGlobal;
             public readonly SemaphoreSlim Semaphore;
             public readonly WaitNode WaitNode;
 
@@ -223,10 +215,8 @@ namespace CustomWorkQueue
             {
                 _workQueue = workQueue;
 
-                var managedThreadId = Thread.CurrentThread.ManagedThreadId;
-                Random = new FastRandom(managedThreadId);
+                Random = new FastRandom(Thread.CurrentThread.ManagedThreadId);
                 Queue = new WorkStealingQueue<TWorkItem>();
-                PreferredGlobal = _workQueue._globalQueues[managedThreadId % _workQueue._globalQueues.Length];
                 Semaphore = new SemaphoreSlim(0, 1);
                 WaitNode = new WaitNode(Semaphore);
 

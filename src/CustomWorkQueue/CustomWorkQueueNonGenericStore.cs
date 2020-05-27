@@ -5,6 +5,6 @@ namespace CustomWorkQueue
     internal static class CustomWorkQueueNonGenericStore
     {
         [ThreadStatic]
-        internal static object Locals;
+        internal static object LocalQueue;
     }
 }
