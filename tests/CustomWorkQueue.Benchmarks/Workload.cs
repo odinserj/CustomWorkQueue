@@ -1,22 +1,32 @@
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace CustomWorkQueue.Benchmarks
 {
+    [StructLayout(LayoutKind.Explicit, Size = 2 * CacheLineSize)]
+    internal struct PaddedInt64
+    {
+        private const int CacheLineSize = 128;
+
+        [FieldOffset(CacheLineSize)]
+        internal long Value;
+    }
+
     public sealed class RemainingWorkItem : IThreadPoolWorkItem
     {
         private readonly CountdownEvent _mre;
-        private long _itemsRemaining;
+        private PaddedInt64 _itemsRemaining;
 
         public RemainingWorkItem(CountdownEvent mre, long itemsRemaining)
         {
             _mre = mre;
-            _itemsRemaining = itemsRemaining;
+            _itemsRemaining = new PaddedInt64 { Value = itemsRemaining };
         }
 
         public void Execute()
         {
             if (Interlocked.Decrement(
-                ref _itemsRemaining) == 0)
+                ref _itemsRemaining.Value) == 0)
                 _mre.Signal();
         }
     }
@@ -47,18 +57,18 @@ namespace CustomWorkQueue.Benchmarks
     {
         private readonly IThreadPool<IThreadPoolWorkItem> _pool;
         private readonly CountdownEvent _signal;
-        private long _count;
+        private PaddedInt64 _count;
 
         public SequentialWorkItem(IThreadPool<IThreadPoolWorkItem> pool, CountdownEvent signal, long count)
         {
             _pool = pool;
             _signal = signal;
-            _count = count;
+            _count = new PaddedInt64 { Value = count };
         }
 
         public void Execute()
         {
-            if (_count-- > 0)
+            if (_count.Value-- > 0)
             {
                 _pool.UnsafeQueueUserWorkItem(this, true);
             }
