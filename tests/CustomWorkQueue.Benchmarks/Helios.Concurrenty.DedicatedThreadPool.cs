@@ -600,19 +600,18 @@ namespace Helios.Concurrency
                 public long RawData;
             }
 
-            private const int CacheLineSize = 64;
-
-            [StructLayout(LayoutKind.Explicit, Size = 2 * CacheLineSize)]
-            private struct PaddedSemaphoreState
-            {
-                // padding to ensure we get our own cache line
-                // TODO: Trying to ensure that in .NET Core we have to introduce a dedicated struct to make paddings work.
-                [FieldOffset(1 * CacheLineSize)] public SemaphoreState State;
-            }
+            [StructLayout(LayoutKind.Explicit, Size = 64)]
+            private struct CacheLinePadding
+            { }
 
             private readonly Semaphore m_semaphore;
 
-            private PaddedSemaphoreState m_paddedState;
+            // padding to ensure we get our own cache line
+#pragma warning disable 169
+            private readonly CacheLinePadding m_padding1;
+            private SemaphoreState m_state;
+            private readonly CacheLinePadding m_padding2;
+#pragma warning restore 169
 
             public UnfairSemaphore()
             {
@@ -755,7 +754,7 @@ namespace Helios.Concurrency
 
             private bool TryUpdateState(SemaphoreState newState, SemaphoreState currentState)
             {
-                if (Interlocked.CompareExchange(ref m_paddedState.State.RawData, newState.RawData, currentState.RawData) == currentState.RawData)
+                if (Interlocked.CompareExchange(ref m_state.RawData, newState.RawData, currentState.RawData) == currentState.RawData)
                 {
                     Debug.Assert(newState.CountForSpinners <= MaxWorker, "CountForSpinners is greater than MaxWorker");
                     Debug.Assert(newState.CountForSpinners >= 0, "CountForSpinners is lower than zero");
@@ -779,7 +778,7 @@ namespace Helios.Concurrency
                 // state will be detected in TryUpdateState with the CompareExchange.
 
                 SemaphoreState state = new SemaphoreState();
-                state.RawData = Volatile.Read(ref m_paddedState.State.RawData);
+                state.RawData = Volatile.Read(ref m_state.RawData);
                 return state;
             }
         }
